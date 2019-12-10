@@ -1,0 +1,163 @@
+/*
+---------------------------------------------------------------------------
+Copyright (c) 2019, Michael Mohr, San Jose, CA, USA. All rights reserved.
+Copyright (c) 2019, Brian Gladman, Worcester, UK. All rights reserved.
+
+The redistribution and use of this software (with or without changes)
+is allowed without the payment of fees or royalties provided that:
+
+  source code distributions include the above copyright notice, this
+  list of conditions and the following disclaimer;
+
+  binary distributions include the above copyright notice, this list
+  of conditions and the following disclaimer in their documentation.
+
+This software is provided 'as is' with no explicit or implied warranties
+in respect of its operation, including, but not limited to, correctness
+and fitness for purpose.
+---------------------------------------------------------------------------
+Issue Date: 10/12/2019
+*/
+
+#if defined(_MSC_VER)
+#  include <Windows.h>
+#  include <malloc.h>
+#  define strncasecmp _strnicmp
+#else
+#  include <sys/mman.h>
+#endif
+
+#define CAPSULE_NAME "__AES_CONTEXT__"
+#define PY_SSIZE_T_CLEAN
+
+#include <Python.h>
+#include <structmember.h>
+
+#include <aes.h>
+
+/*
+ * Internal support subroutine which zeros the context memory,
+ * unlocks it, and then frees it.
+ */
+static void del_aes_context(aes_crypt_ctx *ctx)
+{
+    if(!ctx)
+        return;
+    memset(ctx, 0, sizeof(aes_crypt_ctx));
+#if defined(_MSC_VER)
+    VirtualUnlock(ctx, sizeof(aes_crypt_ctx));
+    _aligned_free(ctx);
+#else
+    munlock(ctx, sizeof(aes_crypt_ctx));
+    free(ctx);
+#endif
+}
+
+/*
+ * Internal support subroutine which allocates the context memory
+ * (aligned to a 16-byte boundary), locks it, and then zeros it.
+ */
+static aes_crypt_ctx *new_aes_context(void)
+{
+    aes_crypt_ctx *ctx = NULL;
+
+#if defined(_MSC_VER)
+    if((ctx = _aligned_malloc(sizeof(aes_crypt_ctx), 16)) == NULL)
+        return NULL;
+    if(VirtualLock(ctx, sizeof(aes_crypt_ctx)) == 0)
+    {
+        _aligned_free(ctx);
+        return NULL;
+    }
+#else
+    if(posix_memalign((void **)&ctx, 16, sizeof(aes_crypt_ctx)) != 0)
+        return NULL;
+    if(mlock(ctx, sizeof(aes_crypt_ctx)) != 0)
+    {
+        free(ctx);
+        return NULL;
+    }
+#endif
+    memset(ctx, 0, sizeof(aes_crypt_ctx));
+    return ctx;
+}
+
+/*
+ * Internal support subroutine which functions as a destructor
+ * for the AES context capsules.
+ */
+static void destroy_aes_context(PyObject *capsule)
+{
+    del_aes_context((aes_crypt_ctx *)PyCapsule_GetPointer(capsule, CAPSULE_NAME));
+}
+
+PyDoc_STRVAR(build_aes_context__doc__,
+"build_aes_context(key, use_case) -> PyCapsule\n\n\
+Allocate and initialize an AES context on the heap.");
+static PyObject *build_aes_context(PyObject *self, PyObject *args, PyObject *kwds)
+{
+    Py_buffer key, use_case;
+    char *kwlist[] = {"key", "use_case", NULL};
+    aes_crypt_ctx *ctx;
+    unsigned int success = 0;
+    PyObject *capsule;
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwds, "y*s*", kwlist, &key, &use_case))
+    {
+        PyErr_SetString(PyExc_ValueError, "Failed to parse arguments");
+        return NULL;
+    }
+
+    ctx = new_aes_context();
+    if(!ctx)
+        return PyErr_NoMemory();
+
+    if(strncasecmp(use_case.buf, "encryption", use_case.len))
+        if(aes_encrypt_key(key.buf, key.len, ctx) == EXIT_SUCCESS)
+            success = 1;
+        else
+            PyErr_SetString(PyExc_ValueError, "Invalid encryption key size");
+    else if(strncasecmp(use_case.buf, "decryption", use_case.len))
+        if(aes_decrypt_key(key.buf, key.len, ctx) == EXIT_SUCCESS)
+            success = 1;
+        else
+            PyErr_SetString(PyExc_ValueError, "Invalid decryption key size");
+    else
+        PyErr_SetString(PyExc_ValueError, "Invalid use case");
+
+    PyBuffer_Release(&key);
+    PyBuffer_Release(&use_case);
+    if(!success)
+    {
+        del_aes_context(ctx);
+        return NULL;
+    }
+    capsule = PyCapsule_New((void*)ctx, CAPSULE_NAME, destroy_aes_context);
+    if(!capsule)
+        del_aes_context(ctx);
+    return capsule;
+}
+
+static PyMethodDef aes_methods[] = {
+    {"build_aes_context", build_aes_context, METH_VARARGS | METH_KEYWORDS,
+     build_aes_context__doc__},
+    {NULL, NULL, 0, NULL} /* Sentinel */
+};
+
+static struct PyModuleDef aes_module =
+{
+    PyModuleDef_HEAD_INIT,
+    "aes",              /* m_name     */
+    "Python Bindings",  /* m_doc      */
+    -1,                 /* m_size     */
+    aes_methods,        /* m_methods  */
+    NULL,               /* m_reload   */
+    NULL,               /* m_traverse */
+    NULL,               /* m_clear    */
+    NULL,               /* m_free     */
+};
+
+PyMODINIT_FUNC PyInit_aes(void)
+{
+    return PyModule_Create(&aes_module);
+}
