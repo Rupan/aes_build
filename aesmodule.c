@@ -16,7 +16,7 @@ This software is provided 'as is' with no explicit or implied warranties
 in respect of its operation, including, but not limited to, correctness
 and fitness for purpose.
 ---------------------------------------------------------------------------
-Issue Date: 10/12/2019
+Issue Date: 12/12/2019
 */
 
 #if defined(_MSC_VER)
@@ -91,10 +91,10 @@ static void destroy_aes_context(PyObject *capsule)
     del_aes_context((aes_crypt_ctx *)PyCapsule_GetPointer(capsule, CAPSULE_NAME));
 }
 
-PyDoc_STRVAR(build_aes_context__doc__,
-"build_aes_context(key, use_case) -> PyCapsule\n\n\
+PyDoc_STRVAR(build_context__doc__,
+"build_context(key, use_case) -> PyCapsule\n\n\
 Allocate and initialize an AES context on the heap.");
-static PyObject *build_aes_context(PyObject *self, PyObject *args, PyObject *kwds)
+static PyObject *build_context(PyObject *self, PyObject *args, PyObject *kwds)
 {
     Py_buffer key, use_case;
     char *kwlist[] = {"key", "use_case", NULL};
@@ -138,10 +138,83 @@ static PyObject *build_aes_context(PyObject *self, PyObject *args, PyObject *kwd
     return capsule;
 }
 
+/*
+ * Internal support subroutine which unwraps a PyCapsule and returns NULL
+ * (on error) or a valid pointer to an aes_crypt_ctx.  On error sets the
+ * exception before return.
+ */
+aes_crypt_ctx *unwrap_aes_context(PyObject *capsule)
+{
+    aes_crypt_ctx *ctx;
+
+    if(!PyCapsule_IsValid(capsule, CAPSULE_NAME))
+    {
+        PyErr_SetString(PyExc_ValueError, "Invalid AES context");
+        return NULL;
+    }
+    return (aes_crypt_ctx *)PyCapsule_GetPointer(capsule, CAPSULE_NAME);
+}
+
+PyDoc_STRVAR(ecb_encrypt__doc__,
+"ecb_encrypt(data, ctx) -> None\n\n\
+Encrypt one or more blocks of data in ECB mode in-place.");
+static PyObject *ecb_encrypt(PyObject *self, PyObject *args, PyObject *kwds)
+{
+    PyObject *capsule;
+    Py_buffer data;
+    char *kwlist[] = {"data", "ctx", NULL};
+    aes_encrypt_ctx *ctx;
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwds, "y*O", kwlist, &data, &capsule))
+    {
+        PyErr_SetString(PyExc_ValueError, "Failed to parse arguments");
+        return NULL;
+    }
+    ctx = (aes_encrypt_ctx *)unwrap_aes_context(capsule);
+    if(!ctx) return NULL;
+
+    if(aes_ecb_encrypt(data.buf, data.buf, data.len, ctx) != EXIT_SUCCESS)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "ECB encryption failure");
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
+PyDoc_STRVAR(ecb_decrypt__doc__,
+"ecb_decrypt(data, ctx) -> None\n\n\
+Decrypt one or more blocks of data in ECB mode in-place.");
+static PyObject *ecb_decrypt(PyObject *self, PyObject *args, PyObject *kwds)
+{
+    PyObject *capsule;
+    Py_buffer data;
+    char *kwlist[] = {"data", "ctx", NULL};
+    aes_decrypt_ctx *ctx;
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwds, "y*O", kwlist, &data, &capsule))
+    {
+        PyErr_SetString(PyExc_ValueError, "Failed to parse arguments");
+        return NULL;
+    }
+    ctx = (aes_decrypt_ctx *)unwrap_aes_context(capsule);
+    if(!ctx) return NULL;
+
+    if(aes_ecb_decrypt(data.buf, data.buf, data.len, ctx) != EXIT_SUCCESS)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "ECB decryption failure");
+        return NULL;
+    }
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef aes_methods[] = {
-    {"build_aes_context", build_aes_context, METH_VARARGS | METH_KEYWORDS,
-     build_aes_context__doc__},
-    {NULL, NULL, 0, NULL} /* Sentinel */
+    {"build_context", build_context, METH_VARARGS | METH_KEYWORDS,
+     build_context__doc__},
+    {"ecb_encrypt", ecb_encrypt, METH_VARARGS | METH_KEYWORDS,
+     ecb_encrypt__doc__},
+    {"ecb_decrypt", ecb_decrypt, METH_VARARGS | METH_KEYWORDS,
+     ecb_decrypt__doc__},
+    {NULL, NULL, 0, NULL}  /* Sentinel */
 };
 
 static struct PyModuleDef aes_module =
