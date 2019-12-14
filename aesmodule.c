@@ -19,68 +19,13 @@ and fitness for purpose.
 Issue Date: 12/12/2019
 */
 
-#if defined(_MSC_VER)
-#  include <Windows.h>
-#  include <malloc.h>
-#  define strncasecmp _strnicmp
-#else
-#  include <sys/mman.h>
-#endif
-
 #define CAPSULE_NAME "__AES_CONTEXT__"
 #define PY_SSIZE_T_CLEAN
 
 #include <Python.h>
 #include <structmember.h>
 
-#include <aes.h>
-
-/*
- * Internal support subroutine which zeros the context memory,
- * unlocks it, and then frees it.
- */
-static void del_aes_context(aes_crypt_ctx *ctx)
-{
-    if(!ctx)
-        return;
-    memset(ctx, 0, sizeof(aes_crypt_ctx));
-#if defined(_MSC_VER)
-    VirtualUnlock(ctx, sizeof(aes_crypt_ctx));
-    _aligned_free(ctx);
-#else
-    munlock(ctx, sizeof(aes_crypt_ctx));
-    free(ctx);
-#endif
-}
-
-/*
- * Internal support subroutine which allocates the context memory
- * (aligned to a 16-byte boundary), locks it, and then zeros it.
- */
-static aes_crypt_ctx *new_aes_context(void)
-{
-    aes_crypt_ctx *ctx = NULL;
-
-#if defined(_MSC_VER)
-    if((ctx = _aligned_malloc(sizeof(aes_crypt_ctx), 16)) == NULL)
-        return NULL;
-    if(VirtualLock(ctx, sizeof(aes_crypt_ctx)) == 0)
-    {
-        _aligned_free(ctx);
-        return NULL;
-    }
-#else
-    if(posix_memalign((void **)&ctx, 16, sizeof(aes_crypt_ctx)) != 0)
-        return NULL;
-    if(mlock(ctx, sizeof(aes_crypt_ctx)) != 0)
-    {
-        free(ctx);
-        return NULL;
-    }
-#endif
-    memset(ctx, 0, sizeof(aes_crypt_ctx));
-    return ctx;
-}
+#include "aes_compat.h"
 
 /*
  * Internal support subroutine which functions as a destructor
@@ -145,8 +90,6 @@ static PyObject *build_context(PyObject *self, PyObject *args, PyObject *kwds)
  */
 aes_crypt_ctx *unwrap_aes_context(PyObject *capsule)
 {
-    aes_crypt_ctx *ctx;
-
     if(!PyCapsule_IsValid(capsule, CAPSULE_NAME))
     {
         PyErr_SetString(PyExc_ValueError, "Invalid AES context");

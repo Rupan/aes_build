@@ -5,6 +5,7 @@ from distutils.core import setup, Extension
 
 source_files = [
     "aesmodule.c",
+    "aes_compat.c",
     "../aes/aeskey.c",
     "../aes/aes_modes.c",
     "../aes/aestab.c",
