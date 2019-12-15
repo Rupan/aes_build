@@ -57,12 +57,12 @@ static PyObject *build_context(PyObject *self, PyObject *args, PyObject *kwds)
     if(!ctx)
         return PyErr_NoMemory();
 
-    if(strncasecmp(use_case.buf, "encryption", use_case.len))
+    if(strncasecmp(use_case.buf, "encryption", use_case.len) == 0)
         if(aes_encrypt_key(key.buf, key.len, ctx) == EXIT_SUCCESS)
             success = 1;
         else
             PyErr_SetString(PyExc_ValueError, "Invalid encryption key size");
-    else if(strncasecmp(use_case.buf, "decryption", use_case.len))
+    else if(strncasecmp(use_case.buf, "decryption", use_case.len) == 0)
         if(aes_decrypt_key(key.buf, key.len, ctx) == EXIT_SUCCESS)
             success = 1;
         else
@@ -114,13 +114,20 @@ static PyObject *ecb_encrypt(PyObject *self, PyObject *args, PyObject *kwds)
         return NULL;
     }
     ctx = (aes_encrypt_ctx *)unwrap_aes_context(capsule);
-    if(!ctx) return NULL;
-
-    if(aes_ecb_encrypt(data.buf, data.buf, data.len, ctx) != EXIT_SUCCESS)
+    if(!ctx)
     {
+        PyBuffer_Release(&data);
+        return NULL;
+    }
+
+    if(aes_ecb_encrypt(data.buf, data.buf, (int)data.len, ctx) != EXIT_SUCCESS)
+    {
+        PyBuffer_Release(&data);
         PyErr_SetString(PyExc_RuntimeError, "ECB encryption failure");
         return NULL;
     }
+
+    PyBuffer_Release(&data);
     Py_RETURN_NONE;
 }
 
@@ -140,13 +147,19 @@ static PyObject *ecb_decrypt(PyObject *self, PyObject *args, PyObject *kwds)
         return NULL;
     }
     ctx = (aes_decrypt_ctx *)unwrap_aes_context(capsule);
-    if(!ctx) return NULL;
-
-    if(aes_ecb_decrypt(data.buf, data.buf, data.len, ctx) != EXIT_SUCCESS)
+    if(!ctx)
     {
+        PyBuffer_Release(&data);
+        return NULL;
+    }
+
+    if(aes_ecb_decrypt(data.buf, data.buf, (int)data.len, ctx) != EXIT_SUCCESS)
+    {
+        PyBuffer_Release(&data);
         PyErr_SetString(PyExc_RuntimeError, "ECB decryption failure");
         return NULL;
     }
+    PyBuffer_Release(&data);
     Py_RETURN_NONE;
 }
 
