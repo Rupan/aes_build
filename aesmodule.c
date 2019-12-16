@@ -97,7 +97,7 @@ static PyObject *build_encryption_context(PyObject *self, PyObject *args, PyObje
 
 PyDoc_STRVAR(build_decryption_context__doc__,
 "build_decryption_context(key) -> PyCapsule\n\n\
-Allocate and initialize an AES encryption context on the heap.");
+Allocate and initialize an AES decryption context on the heap.");
 static PyObject *build_decryption_context(PyObject *self, PyObject *args, PyObject *kwds)
 {
     return build_aes_context(UC_DECRYPTION, args, kwds);
