@@ -159,21 +159,21 @@ static PyObject *ecb_crypt(use_case uc, PyObject *args, PyObject *kwds)
     switch(uc)
     {
     case UC_ENCRYPTION:
-        ecb_status = aes_ecb_encrypt(idata.buf, odata, (int)idata.len, ctx);
+        ecb_status = aes_ecb_encrypt((unsigned char *)idata.buf, odata, (int)idata.len, (aes_encrypt_ctx *)ctx);
         break;
     case UC_DECRYPTION:
-        ecb_status = aes_ecb_decrypt(idata.buf, odata, (int)idata.len, ctx);
+        ecb_status = aes_ecb_decrypt((unsigned char *)idata.buf, odata, (int)idata.len, (aes_decrypt_ctx *)ctx);
         break;
     }
+
+    PyBuffer_Release(&idata);
     if(ecb_status != EXIT_SUCCESS)
     {
         Py_DECREF(retval);
-        PyBuffer_Release(&idata);
         PyErr_SetString(PyExc_RuntimeError, "ECB crypto failure");
         return NULL;
     }
 
-    PyBuffer_Release(&idata);
     return retval;
 }
 
