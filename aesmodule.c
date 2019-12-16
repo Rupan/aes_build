@@ -22,6 +22,11 @@ Issue Date: 12/12/2019
 #define CAPSULE_NAME "__AES_CONTEXT__"
 #define PY_SSIZE_T_CLEAN
 
+typedef enum {
+    UC_ENCRYPTION = 0,
+    UC_DECRYPTION = 1,
+} use_case;
+
 #include <Python.h>
 #include <structmember.h>
 
@@ -36,18 +41,18 @@ static void destroy_aes_context(PyObject *capsule)
     del_aes_context((aes_crypt_ctx *)PyCapsule_GetPointer(capsule, CAPSULE_NAME));
 }
 
-PyDoc_STRVAR(build_context__doc__,
-"build_context(key, use_case) -> PyCapsule\n\n\
-Allocate and initialize an AES context on the heap.");
-static PyObject *build_context(PyObject *self, PyObject *args, PyObject *kwds)
+/*
+ * Internal subroutine used by exported methods build_{en,de}cryption_context
+ */
+static PyObject *build_aes_context(use_case uc, PyObject *args, PyObject *kwds)
 {
-    Py_buffer key, use_case;
-    char *kwlist[] = {"key", "use_case", NULL};
+    Py_buffer key;
+    char *kwlist[] = {"key", NULL};
     aes_crypt_ctx *ctx;
     unsigned int success = 0;
     PyObject *capsule;
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwds, "y*s*", kwlist, &key, &use_case))
+    if(!PyArg_ParseTupleAndKeywords(args, kwds, "y*", kwlist, &key))
     {
         PyErr_SetString(PyExc_ValueError, "Failed to parse arguments");
         return NULL;
@@ -57,12 +62,12 @@ static PyObject *build_context(PyObject *self, PyObject *args, PyObject *kwds)
     if(!ctx)
         return PyErr_NoMemory();
 
-    if(strncasecmp(use_case.buf, "encryption", use_case.len) == 0)
+    if(uc == UC_ENCRYPTION)
         if(aes_encrypt_key(key.buf, key.len, ctx) == EXIT_SUCCESS)
             success = 1;
         else
             PyErr_SetString(PyExc_ValueError, "Invalid encryption key size");
-    else if(strncasecmp(use_case.buf, "decryption", use_case.len) == 0)
+    else if(uc == UC_DECRYPTION)
         if(aes_decrypt_key(key.buf, key.len, ctx) == EXIT_SUCCESS)
             success = 1;
         else
@@ -71,7 +76,6 @@ static PyObject *build_context(PyObject *self, PyObject *args, PyObject *kwds)
         PyErr_SetString(PyExc_ValueError, "Invalid use case");
 
     PyBuffer_Release(&key);
-    PyBuffer_Release(&use_case);
     if(!success)
     {
         del_aes_context(ctx);
@@ -81,6 +85,22 @@ static PyObject *build_context(PyObject *self, PyObject *args, PyObject *kwds)
     if(!capsule)
         del_aes_context(ctx);
     return capsule;
+}
+
+PyDoc_STRVAR(build_encryption_context__doc__,
+"build_encryption_context(key) -> PyCapsule\n\n\
+Allocate and initialize an AES encryption context on the heap.");
+static PyObject *build_encryption_context(PyObject *self, PyObject *args, PyObject *kwds)
+{
+    return build_aes_context(UC_ENCRYPTION, args, kwds);
+}
+
+PyDoc_STRVAR(build_decryption_context__doc__,
+"build_decryption_context(key) -> PyCapsule\n\n\
+Allocate and initialize an AES encryption context on the heap.");
+static PyObject *build_decryption_context(PyObject *self, PyObject *args, PyObject *kwds)
+{
+    return build_aes_context(UC_DECRYPTION, args, kwds);
 }
 
 /*
@@ -195,11 +215,13 @@ static PyObject *ecb_decrypt(PyObject *self, PyObject *args, PyObject *kwds)
 }
 
 static PyMethodDef aes_methods[] = {
-    {"build_context", build_context, METH_VARARGS | METH_KEYWORDS,
-     build_context__doc__},
-    {"ecb_encrypt", ecb_encrypt, METH_VARARGS | METH_KEYWORDS,
+    {"build_encryption_context", (PyCFunction)build_encryption_context,
+     METH_VARARGS | METH_KEYWORDS, build_encryption_context__doc__},
+    {"build_decryption_context", (PyCFunction)build_decryption_context,
+     METH_VARARGS | METH_KEYWORDS, build_decryption_context__doc__},
+    {"ecb_encrypt", (PyCFunction)ecb_encrypt, METH_VARARGS | METH_KEYWORDS,
      ecb_encrypt__doc__},
-    {"ecb_decrypt", ecb_decrypt, METH_VARARGS | METH_KEYWORDS,
+    {"ecb_decrypt", (PyCFunction)ecb_decrypt, METH_VARARGS | METH_KEYWORDS,
      ecb_decrypt__doc__},
     {NULL, NULL, 0, NULL}  /* Sentinel */
 };
