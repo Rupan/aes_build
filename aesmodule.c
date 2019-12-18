@@ -123,14 +123,13 @@ aes_crypt_ctx *unwrap_aes_context(PyObject *capsule)
  */
 static PyObject *ecb_crypt(use_case uc, PyObject *args, PyObject *kwds)
 {
-    PyObject *capsule, *retval;
-    Py_buffer idata;
-    unsigned char *odata;
+    PyObject *capsule;
+    Py_buffer data;
     char *kwlist[] = {"data", "ctx", NULL};
     aes_crypt_ctx *ctx;
     AES_RETURN ecb_status;
 
-    if(!PyArg_ParseTupleAndKeywords(args, kwds, "y*O", kwlist, &idata, &capsule))
+    if(!PyArg_ParseTupleAndKeywords(args, kwds, "y*O", kwlist, &data, &capsule))
     {
         PyErr_SetString(PyExc_ValueError, "Failed to parse arguments");
         return NULL;
@@ -138,56 +137,51 @@ static PyObject *ecb_crypt(use_case uc, PyObject *args, PyObject *kwds)
     ctx = unwrap_aes_context(capsule);
     if(!ctx)
     {
-        PyBuffer_Release(&idata);
-        return NULL;
-    }
-
-    retval = PyBytes_FromStringAndSize(NULL, idata.len);
-    if(!retval)
-    {
-        PyBuffer_Release(&idata);
-        return NULL;
-    }
-    odata = (unsigned char *)PyBytes_AsString(retval);
-    if(!odata)
-    {
-        Py_DECREF(retval);
-        PyBuffer_Release(&idata);
+        PyBuffer_Release(&data);
         return NULL;
     }
 
     switch(uc)
     {
     case UC_ENCRYPTION:
-        ecb_status = aes_ecb_encrypt((unsigned char *)idata.buf, odata, (int)idata.len, (aes_encrypt_ctx *)ctx);
+        ecb_status = aes_ecb_encrypt(
+            (unsigned char *)data.buf,
+            (unsigned char *)data.buf,
+            (int)data.len,
+            (aes_encrypt_ctx *)ctx
+        );
         break;
     case UC_DECRYPTION:
-        ecb_status = aes_ecb_decrypt((unsigned char *)idata.buf, odata, (int)idata.len, (aes_decrypt_ctx *)ctx);
+        ecb_status = aes_ecb_decrypt(
+            (unsigned char *)data.buf,
+            (unsigned char *)data.buf,
+            (int)data.len,
+            (aes_decrypt_ctx *)ctx
+        );
         break;
     }
 
-    PyBuffer_Release(&idata);
+    PyBuffer_Release(&data);
     if(ecb_status != EXIT_SUCCESS)
     {
-        Py_DECREF(retval);
         PyErr_SetString(PyExc_RuntimeError, "ECB crypto failure");
         return NULL;
     }
 
-    return retval;
+    Py_RETURN_NONE;
 }
 
 PyDoc_STRVAR(ecb_encrypt__doc__,
-"ecb_encrypt(data, ctx) -> bytes\n\n\
-Encrypt one or more blocks of data in ECB mode.");
+"ecb_encrypt(data, ctx) -> None\n\n\
+In-place encryption of one or more blocks of data using ECB mode.");
 static PyObject *ecb_encrypt(PyObject *self, PyObject *args, PyObject *kwds)
 {
     return ecb_crypt(UC_ENCRYPTION, args, kwds);
 }
 
 PyDoc_STRVAR(ecb_decrypt__doc__,
-"ecb_decrypt(data, ctx) -> bytes\n\n\
-Decrypt one or more blocks of data in ECB mode.");
+"ecb_decrypt(data, ctx) -> None\n\n\
+In-place decryption of one or more blocks of data using ECB mode.");
 static PyObject *ecb_decrypt(PyObject *self, PyObject *args, PyObject *kwds)
 {
     return ecb_crypt(UC_DECRYPTION, args, kwds);
