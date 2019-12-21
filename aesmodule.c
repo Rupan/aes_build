@@ -134,6 +134,12 @@ static PyObject *ecb_crypt(use_case uc, PyObject *args, PyObject *kwds)
         PyErr_SetString(PyExc_ValueError, "Failed to parse arguments");
         return NULL;
     }
+    if(((size_t)data.len & (AES_BLOCK_SIZE-1)) != 0)
+    {
+        PyBuffer_Release(&data);
+        PyErr_SetString(PyExc_ValueError, "Invalid data buffer length");
+        return NULL;
+    }
     ctx = unwrap_aes_context(capsule);
     if(!ctx)
     {
@@ -187,6 +193,60 @@ static PyObject *ecb_decrypt(PyObject *self, PyObject *args, PyObject *kwds)
     return ecb_crypt(UC_DECRYPTION, args, kwds);
 }
 
+PyDoc_STRVAR(ctr_encrypt__doc__,
+"ctr_encrypt(data, counter, ctx) -> None\n\n\
+In-place encryption of one or more blocks of data using CTR mode.");
+PyDoc_STRVAR(ctr_decrypt__doc__,
+"ctr_decrypt(data, counter, ctx) -> None\n\n\
+In-place decryption of one or more blocks of data using CTR mode.");
+static PyObject *ctr_crypt(PyObject *self, PyObject *args, PyObject *kwds)
+{
+    PyObject *capsule;
+    Py_buffer data, counter;
+    char *kwlist[] = {"data", "counter", "ctx", NULL};
+    aes_crypt_ctx *ctx;
+    AES_RETURN ctr_status;
+
+    if(!PyArg_ParseTupleAndKeywords(args, kwds, "y*y*O", kwlist, &data, &counter, &capsule))
+    {
+        PyErr_SetString(PyExc_ValueError, "Failed to parse arguments");
+        return NULL;
+    }
+    if((counter.len != AES_BLOCK_SIZE) || (((size_t)data.len & (AES_BLOCK_SIZE-1)) != 0))
+    {
+        PyBuffer_Release(&data);
+        PyBuffer_Release(&counter);
+        PyErr_SetString(PyExc_ValueError, "Invalid data or counter buffer length");
+        return NULL;
+    }
+    ctx = unwrap_aes_context(capsule);
+    if(!ctx)
+    {
+        PyBuffer_Release(&data);
+        PyBuffer_Release(&counter);
+        return NULL;
+    }
+
+    ctr_status = aes_ctr_crypt(
+        (unsigned char *)data.buf,
+        (unsigned char *)data.buf,
+        (int)data.len,
+        (unsigned char *)counter.buf,
+        ctr_inc,
+        (aes_encrypt_ctx *)ctx
+    );
+
+    PyBuffer_Release(&data);
+    PyBuffer_Release(&counter);
+    if(ctr_status != EXIT_SUCCESS)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "CTR crypto failure");
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef aes_methods[] = {
     {"build_encryption_context", (PyCFunction)build_encryption_context,
      METH_VARARGS | METH_KEYWORDS, build_encryption_context__doc__},
@@ -196,6 +256,10 @@ static PyMethodDef aes_methods[] = {
      ecb_encrypt__doc__},
     {"ecb_decrypt", (PyCFunction)ecb_decrypt, METH_VARARGS | METH_KEYWORDS,
      ecb_decrypt__doc__},
+    {"ctr_encrypt", (PyCFunction)ctr_crypt, METH_VARARGS | METH_KEYWORDS,
+     ctr_encrypt__doc__},
+    {"ctr_decrypt", (PyCFunction)ctr_crypt, METH_VARARGS | METH_KEYWORDS,
+     ctr_decrypt__doc__},
     {NULL, NULL, 0, NULL}  /* Sentinel */
 };
 
