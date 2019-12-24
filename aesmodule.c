@@ -204,6 +204,12 @@ static PyObject *ecb_crypt(use_case uc, PyObject *args, PyObject *kwds)
     switch(uc)
     {
     case UC_ENCRYPTION:
+        if(!IS_ENCRYPTION_CTX(ctx))
+        {
+            PyBuffer_Release(&data);
+            PyErr_SetString(PyExc_ValueError, "Using decryption CTX for encryption");
+            return NULL;
+        }
         ecb_status = aes_ecb_encrypt(
             (unsigned char *)data.buf,
             (unsigned char *)data.buf,
@@ -212,6 +218,12 @@ static PyObject *ecb_crypt(use_case uc, PyObject *args, PyObject *kwds)
         );
         break;
     case UC_DECRYPTION:
+        if(!IS_DECRYPTION_CTX(ctx))
+        {
+            PyBuffer_Release(&data);
+            PyErr_SetString(PyExc_ValueError, "Using encryption CTX for decryption");
+            return NULL;
+        }
         ecb_status = aes_ecb_decrypt(
             (unsigned char *)data.buf,
             (unsigned char *)data.buf,
@@ -292,6 +304,13 @@ static PyObject *ctr_crypt(PyObject *self, PyObject *args, PyObject *kwds)
     {
         PyBuffer_Release(&data);
         PyBuffer_Release(&counter);
+        return NULL;
+    }
+    if(!IS_ENCRYPTION_CTX(ctx))
+    {
+        PyBuffer_Release(&data);
+        PyBuffer_Release(&counter);
+        PyErr_SetString(PyExc_ValueError, "CTR mode requires an encryption context");
         return NULL;
     }
 
