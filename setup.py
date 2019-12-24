@@ -28,7 +28,6 @@ class BuildExtCommand(build_ext):
 
 source_files = [
     "aesmodule.c",
-    "aes_compat.c",
     "../aes/aeskey.c",
     "../aes/aes_modes.c",
     "../aes/aestab.c",
